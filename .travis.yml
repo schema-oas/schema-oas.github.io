@@ -1,0 +1,64 @@
+language: node_js
+node_js:
+  - '10'
+cache:
+  bundler: true
+  directories:
+    - ~/.npm
+    - node_modules
+  npm: true
+notifications:
+  email: false
+addons:
+  apt:
+    packages:
+      - libcurl4-openssl-dev
+branches:
+  only:
+    - develop
+env:
+  global:
+    - PATH=$HOME/.local/bin:$PATH
+    - PATH=$PWD:$PATH
+    - NOKOGIRI_USE_SYSTEM_LIBRARIES=true # speeds up installation of some gems
+before_install:
+  # package-lock.json was introduced in npm@5
+  - '[[ $(node -v) =~ ^v9.*$ ]] || npm install -g npm@latest' # skipped when using node 9
+  - npm install -g github-label-sync
+  # - gem install jekyll htmlproofer
+install:
+  - travis_retry npm install
+  - travis_retry bundle install
+stages:
+  - test
+  - name: deploy
+    if: repo = schema-oas/schema-oas.github.io
+        AND type != pull_request
+        AND branch = develop
+jobs:
+  include:
+    - stage: test
+      name: 'Checks and Tests'
+      script:
+        - travis_retry github-label-sync -a "$GH_TOKEN" -l 'https://git.io/fAe5i' schema-oas/schema-oas.github.io
+        - JEKYLL_GITHUB_TOKEN="$GH_TOKEN" JEKYLL_ENV=production bundle exec jekyll build --destination site
+        # - htmlproofer ./site --disable-external
+    - stage: deploy
+      name: 'Publish and Release'
+      script:
+        - npm run semantic-release
+    - name: 'Deploy GitHub Pages'
+      script:
+        - JEKYLL_GITHUB_TOKEN="$GH_TOKEN" JEKYLL_ENV=production bundle exec jekyll build --destination site
+      deploy: &pages
+        provider: pages
+        skip-cleanup: true
+        github-token: "$GH_TOKEN"
+        # name: schema-oas
+        # email: schema-oas@users.noreply.github.com
+        # keep-history: true
+        target-branch: master
+        local-dir: ./site
+        on:
+          repo: schema-oas/schema-oas.github.io
+          branch: develop
